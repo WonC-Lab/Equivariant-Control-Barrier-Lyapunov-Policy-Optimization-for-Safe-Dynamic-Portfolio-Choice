@@ -76,7 +76,7 @@ Metrics reported over $M=25$ independent market trajectory seeds ($\alpha = 20.0
 
 ---
 
-## ⚙️ Installation & Requirements
+## Installation & Requirements
 
 Ensure Python 3.9+ and PyTorch are installed.
 
@@ -90,7 +90,7 @@ pip install torch numpy scipy pandas matplotlib gymnasium
 
 ---
 
-## 🚀 Quickstart & Reproduction
+## Quickstart & Reproduction
 
 ### 1. Run Multi-Seed Benchmark Experiments
 Evaluates all algorithms over 25 independent random seeds across Kim-Omberg, Heston, and Jump-Diffusion environments:
@@ -118,7 +118,7 @@ python experiments/plot_historical_backtest.py
 
 ---
 
-## 📄 Citation
+## Citation
 
 If you use E-CBLPO in your research, please cite:
 
@@ -126,13 +126,13 @@ If you use E-CBLPO in your research, please cite:
 @article{cho2026equivariant,
   title={Equivariant Control Barrier-Lyapunov Policy Optimization for Safe Dynamic Portfolio Choice},
   author={Cho, WonChan},
-  journal={arXiv preprint},
+  journal={},
   year={2026}
 }
 ```
 
 ---
 
-## 📜 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
