@@ -12,7 +12,7 @@ Official implementation of **Equivariant Control Barrier-Lyapunov Policy Optimiz
 
 ---
 
-## 📌 Abstract & Key Contributions
+## Abstract & Key Contributions
 
 Continuous-time dynamic portfolio optimization under stochastic market regimes faces severe drawdown risks and potential insolvency during tail-risk events. Conventional reinforcement learning (RL) and optimal control approaches enforce risk limits via soft penalty terms in the reward function or Lagrangian relaxations, which fail to guarantee safety during black-swan market crashes.
 
@@ -24,7 +24,7 @@ Continuous-time dynamic portfolio optimization under stochastic market regimes f
 
 ---
 
-## 📊 Benchmark Empirical Performance Summary
+## Benchmark Empirical Performance Summary
 
 Metrics reported over $M=25$ independent market trajectory seeds ($\alpha = 20.0\%$ Max Drawdown Limit).
 
@@ -54,7 +54,7 @@ Metrics reported over $M=25$ independent market trajectory seeds ($\alpha = 20.0
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```
 ├── src/
