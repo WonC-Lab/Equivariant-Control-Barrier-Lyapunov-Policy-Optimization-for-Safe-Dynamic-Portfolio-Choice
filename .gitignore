@@ -1,0 +1,25 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*$py.class
+
+# LaTeX build artifacts & source tex files (EXCLUDED per request)
+*.tex
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
+
+# IDE & Editor files
+.idea/
+.vscode/
+.DS_Store
+
+# Temporary outputs
+wandb/
+.system_generated/
