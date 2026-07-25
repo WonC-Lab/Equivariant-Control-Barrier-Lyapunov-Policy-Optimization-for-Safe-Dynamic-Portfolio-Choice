@@ -17,30 +17,25 @@ def generate_credibility_plots(output_dir="experiments/plots"):
     print(" GENERATING HIGH-DIMENSIONAL CREDIBILITY PROOF PLOTS (N=50 ASSETS)")
     print("==================================================================")
     
+def generate_credibility_plots(output_dir="experiments/plots"):
+    os.makedirs(output_dir, exist_ok=True)
+    print("\n==================================================================")
+    print(" GENERATING HIGH-DIMENSIONAL CREDIBILITY PROOF PLOTS (N=50 ASSETS)")
+    print("==================================================================")
+    
     # -------------------------------------------------------------------------
-    # Plot 1: 50-Asset Dynamic Weight Allocation Heatmap (u_t^* over 252 days)
+    # Plot 1: 50-Asset Dynamic Weight Allocation Heatmap (Real Policy Actions)
     # -------------------------------------------------------------------------
     env = HighDimHeston50Env(num_assets=50, max_drawdown=0.20)
-    qp_filter = CBFCLFQPFilter(max_drawdown=0.20)
+    agent = ECBLPOAgent(num_assets=50, max_drawdown=0.20)
     
     obs, info = env.reset(seed=42)
     weight_matrix = []  # Shape: (252, 50)
     drawdown_hist = [info['drawdown']]
     
-    # 50-asset active allocation: average weight per asset ~ 0.024 (2.4%), total leverage ~ 1.2
-    np.random.seed(42)
-    raw_allocations = np.random.uniform(0.01, 0.038, size=(252, 50))
-    
     for t in range(252):
-        u_candidate = raw_allocations[t]
-        s_dict = {
-            'W_t': info['wealth'],
-            'H_t': info['high_water_mark'],
-            'mu_t': env.base_mu,
-            'sigma_t': np.eye(50) * 0.04,
-            'r_t': env.r
-        }
-        u_safe, _ = qp_filter.filter_action(u_candidate, s_dict)
+        # Select action directly from trained ECBLPO agent and QP safety filter
+        _, u_safe, _ = agent.select_action(obs, info, eval_mode=True)
         weight_matrix.append(u_safe)
         
         obs, reward, terminated, truncated, info = env.step(u_safe)
@@ -73,11 +68,25 @@ def generate_credibility_plots(output_dir="experiments/plots"):
     print(f"[Saved Figure 1]: {heatmap_path}")
 
     # -------------------------------------------------------------------------
-    # Plot 2: Pareto Efficiency Frontier (Return vs Safety Budget alpha)
+    # Plot 2: Real Pareto Efficiency Frontier (Simulation under varying alpha)
     # -------------------------------------------------------------------------
     alpha_levels = np.array([0.05, 0.10, 0.15, 0.20, 0.25, 0.30])
-    # Monotonic scaling: larger safety budget alpha allows higher leverage & return
-    returns_alpha = np.array([4.2, 8.8, 14.1, 19.8, 25.5, 31.9])
+    returns_alpha = []
+    
+    for alpha_val in alpha_levels:
+        env_alpha = HighDimHeston50Env(num_assets=50, max_drawdown=alpha_val)
+        agent_alpha = ECBLPOAgent(num_assets=50, max_drawdown=alpha_val)
+        
+        obs_a, info_a = env_alpha.reset(seed=100)
+        for t_a in range(252):
+            _, u_safe_a, _ = agent_alpha.select_action(obs_a, info_a, eval_mode=True)
+            obs_a, _, term_a, trunc_a, info_a = env_alpha.step(u_safe_a)
+            if term_a or trunc_a:
+                break
+        net_ret_pct = (info_a['wealth'] - 1.0) * 100.0
+        returns_alpha.append(net_ret_pct)
+        
+    returns_alpha = np.array(returns_alpha)
     
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.plot(alpha_levels * 100.0, returns_alpha, 'o-', color='#2ecc71', linewidth=2.5, markersize=8, label="E-CBLPO Net Return (%)")

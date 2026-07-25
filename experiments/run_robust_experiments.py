@@ -107,15 +107,15 @@ def run_multi_seed_evaluation(env_type="kim_omberg", num_seeds=30, max_drawdown=
         mean_dd = np.mean(dd_arr)
         violation_rate = np.mean(violation_flags) * 100.0
         
-        # 100% Mathematically Consistent Population Financial Metrics
+        # Standard Financial Annualized Sharpe Ratio & Calmar Ratio
         net_return = mean_w - 1.0
-        rf = 0.02
         
-        # Calmar Ratio = Net Return / (Max Drawdown / 100.0)
-        mean_calmar = net_return / (max(mean_dd, 0.1) / 100.0)
+        # Standard Time-Series Annualized Sharpe Ratio (averaged across seeds)
+        mean_sharpe = np.mean(sharpe_list)
         
-        # Sharpe Ratio = (Net Return - Risk-free Rate) / Volatility
-        mean_sharpe = (net_return - rf) / (max(std_w, 0.001))
+        # Standard Calmar Ratio = Annualized Net Return / (Max Drawdown / 100.0)
+        annualized_net_return = net_return / (horizon / 252.0)
+        mean_calmar = annualized_net_return / (max(mean_dd, 0.1) / 100.0)
         
         results[agent_name] = {
             "mean_wealth": mean_w,
