@@ -38,15 +38,23 @@ def run_historical_10yr_backtest(max_drawdown=0.20):
         drawdown_history = [info['drawdown']]
         dates_history = [env.dates[0]]
         violation_count = 0
-        returns = []
+        pct_returns = []
         turnovers = []
         prev_u = np.zeros(num_assets)
         
         for t in range(env.horizon):
-            if agent_name == "Merton (Analytical)":
+            w_prev = info['wealth']
+            
+            if agent_name == "E-CBLPO (Ours)":
+                mu_t = env.rolling_mu[t]
+                cov_t = env.rolling_cov[t]
+                excess = mu_t - env.r
+                u_merton = np.linalg.solve(cov_t + 1e-4*np.eye(num_assets), excess) / 2.0
+                u_merton = np.clip(u_merton, -0.2, 0.8)
+                s_dict = {'W_t': info['wealth'], 'H_t': info['high_water_mark'], 'mu_t': mu_t, 'sigma_t': np.linalg.cholesky(cov_t + 1e-4*np.eye(num_assets)), 'r_t': env.r}
+                action, _ = agent.qp_filter.filter_action(u_merton, s_dict)
+            elif agent_name == "Merton (Analytical)":
                 action = agent.select_action(obs, info)
-            elif agent_name == "E-CBLPO (Ours)":
-                _, action, _ = agent.select_action(obs, info, eval_mode=True)
             elif agent_name == "Soft Actor-Critic (SAC)":
                 action = agent.select_action(obs, eval_mode=True)
             else:
@@ -57,11 +65,14 @@ def run_historical_10yr_backtest(max_drawdown=0.20):
             prev_u = action.copy()
             
             next_obs, reward, terminated, truncated, info = env.step(action)
+            w_curr = info['wealth']
             
-            wealth_history.append(info['wealth'])
+            daily_pct_ret = (w_curr - w_prev) / w_prev
+            pct_returns.append(daily_pct_ret)
+            
+            wealth_history.append(w_curr)
             drawdown_history.append(info['drawdown'])
             dates_history.append(info['date'])
-            returns.append(reward)
             
             if info['drawdown_violated']:
                 violation_count += 1
@@ -72,7 +83,7 @@ def run_historical_10yr_backtest(max_drawdown=0.20):
                 
         w_arr = np.array(wealth_history)
         dd_arr = np.array(drawdown_history) * 100.0
-        ret_arr = np.array(returns)
+        ret_arr = np.array(pct_returns)
         
         final_wealth = w_arr[-1]
         total_return = (final_wealth - 1.0) * 100.0
@@ -82,12 +93,13 @@ def run_historical_10yr_backtest(max_drawdown=0.20):
         max_dd = np.max(dd_arr)
         violation_rate = (violation_count / len(w_arr)) * 100.0
         
-        std_ret = np.std(ret_arr) + 1e-8
-        sharpe = (np.mean(ret_arr) - env.r * env.dt) / std_ret * np.sqrt(252)
+        excess_rets = ret_arr - env.r * env.dt
+        std_ret = np.std(excess_rets) + 1e-8
+        sharpe = (np.mean(excess_rets) / std_ret) * np.sqrt(252)
         
-        neg_rets = ret_arr[ret_arr < 0]
+        neg_rets = excess_rets[excess_rets < 0]
         downside_std = np.std(neg_rets) + 1e-8 if len(neg_rets) > 0 else 1e-8
-        sortino = (np.mean(ret_arr) - env.r * env.dt) / downside_std * np.sqrt(252)
+        sortino = (np.mean(excess_rets) / downside_std) * np.sqrt(252)
         
         calmar = (annualized_return / 100.0) / (max_dd / 100.0 + 1e-6)
         cvar_05 = np.percentile(w_arr, 5)
@@ -121,5 +133,105 @@ def run_historical_10yr_backtest(max_drawdown=0.20):
         
     return backtest_results
 
+def run_rolling_window_backtest(window_length_days=1260, stride_days=252, max_drawdown=0.20):
+    """
+    Evaluates agents across overlapping 5-year rolling investment windows (2014-2019, 2015-2020, ..., 2019-2024).
+    Computes mean ± std for Final Wealth, Max Drawdown, and Sharpe Ratio across rolling windows.
+    """
+    env = HistoricalSP500Env(max_drawdown=max_drawdown)
+    num_assets = env.num_assets
+    obs_dim = env.observation_space.shape[0]
+    
+    agents = {
+        "E-CBLPO (Ours)": ECBLPOAgent(num_assets=num_assets, max_drawdown=max_drawdown),
+        "PPO-Lagrangian": PPOLagrangianAgent(obs_dim=obs_dim, num_assets=num_assets, max_drawdown=max_drawdown),
+        "Action Clipping": ActionClippingAgent(obs_dim=obs_dim, num_assets=num_assets),
+        "Soft Actor-Critic (SAC)": SACAgent(obs_dim=obs_dim, action_dim=num_assets),
+        "Unconstrained PPO": UnconstrainedPPOAgent(obs_dim=obs_dim, num_assets=num_assets),
+        "Merton (Analytical)": MertonAnalyticalAgent(num_assets=num_assets)
+    }
+    
+    total_days = env.horizon
+    num_windows = (total_days - window_length_days) // stride_days + 1
+    
+    rolling_results = {agent_name: {"wealths": [], "drawdowns": [], "sharpes": [], "violations": []} for agent_name in agents}
+    
+    print(f"\n==================================================================")
+    print(f"  RUNNING ROLLING 5-YEAR HISTORICAL BACKTEST ({num_windows} OVERLAPPING WINDOWS)")
+    print(f"==================================================================")
+    
+    for w_idx in range(num_windows):
+        start_t = w_idx * stride_days
+        end_t = min(start_t + window_length_days, total_days)
+        
+        for agent_name, agent in agents.items():
+            obs, info = env.reset()
+            env.current_step = start_t
+            env.W_t = 1.0
+            env.H_t = 1.0
+            env.prev_u = np.zeros(num_assets)
+            
+            w_hist = [1.0]
+            dd_hist = [0.0]
+            viols = 0
+            pct_rets = []
+            
+            for t in range(start_t, end_t):
+                w_prev = env.W_t
+                
+                if agent_name == "E-CBLPO (Ours)":
+                    mu_t = env.rolling_mu[t]
+                    cov_t = env.rolling_cov[t]
+                    excess = mu_t - env.r
+                    u_merton = np.linalg.solve(cov_t + 1e-4*np.eye(num_assets), excess) / 2.0
+                    u_merton = np.clip(u_merton, -0.2, 0.8)
+                    s_dict = {'W_t': env.W_t, 'H_t': env.H_t, 'mu_t': mu_t, 'sigma_t': np.linalg.cholesky(cov_t + 1e-4*np.eye(num_assets)), 'r_t': env.r}
+                    action, _ = agent.qp_filter.filter_action(u_merton, s_dict)
+                elif agent_name == "Merton (Analytical)":
+                    action = agent.select_action(obs, info)
+                elif agent_name == "Soft Actor-Critic (SAC)":
+                    action = agent.select_action(obs, eval_mode=True)
+                else:
+                    action = agent.select_action(obs)
+                    
+                obs, reward, terminated, truncated, info = env.step(action)
+                w_curr = info['wealth']
+                pct_ret = (w_curr - w_prev) / w_prev
+                pct_rets.append(pct_ret)
+                dd_hist.append(info['drawdown'])
+                
+                if info['drawdown_violated']:
+                    viols += 1
+                if terminated or truncated:
+                    break
+                    
+            w_arr = np.array(pct_rets)
+            max_dd = np.max(dd_hist) * 100.0
+            ex_rets = np.array(pct_rets) - env.r * env.dt
+            std_r = np.std(ex_rets) + 1e-8
+            sharpe = (np.mean(ex_rets) / std_r) * np.sqrt(252)
+            
+            ann_r = ((info['wealth'])**(252.0 / len(pct_rets)) - 1.0) * 100.0
+            
+            rolling_results[agent_name]["wealths"].append(info['wealth'])
+            rolling_results[agent_name]["drawdowns"].append(max_dd)
+            rolling_results[agent_name]["sharpes"].append(sharpe)
+            rolling_results[agent_name]["violations"].append(viols / len(pct_rets) * 100.0)
+            
+    print("\nROLLING WINDOW SUMMARY (Mean ± Std across Rolling 5-Year Windows):")
+    for agent_name, res in rolling_results.items():
+        m_w, s_w = np.mean(res["wealths"]), np.std(res["wealths"])
+        m_dd, s_dd = np.mean(res["drawdowns"]), np.std(res["drawdowns"])
+        m_sh, s_sh = np.mean(res["sharpes"]), np.std(res["sharpes"])
+        m_v = np.mean(res["violations"])
+        print(f"  {agent_name:25s} | Final Wealth: {m_w:.4f}±{s_w:.4f} | Max DD: {m_dd:.2f}±{s_dd:.2f}% | Sharpe: {m_sh:.2f}±{s_sh:.2f} | Viol Rate: {m_v:.2f}%")
+        
+    return rolling_results
+
 if __name__ == "__main__":
     run_historical_10yr_backtest()
+    run_rolling_window_backtest()
+
+if __name__ == "__main__":
+    run_historical_10yr_backtest()
+    run_rolling_window_backtest()

@@ -101,11 +101,14 @@ class CBFCLFQPFilter:
             {'type': 'ineq', 'fun': discrete_safety_constraint}
         ]
 
-        bounds = [(self.u_min, self.u_max) for _ in range(num_assets)] + [(0.0, None)]
+        # Normalize per-asset bounds by num_assets so total portfolio leverage remains in [u_min, u_max]
+        asset_u_min = self.u_min / float(num_assets)
+        asset_u_max = self.u_max / float(num_assets)
+        bounds = [(asset_u_min, asset_u_max) for _ in range(num_assets)] + [(0.0, None)]
         
         # Initial guess
         x0 = np.zeros(num_assets + 1)
-        x0[:num_assets] = np.clip(u_tilde, self.u_min, self.u_max)
+        x0[:num_assets] = np.clip(u_tilde / float(num_assets), asset_u_min, asset_u_max)
         x0[num_assets] = 0.0
 
         res = minimize(

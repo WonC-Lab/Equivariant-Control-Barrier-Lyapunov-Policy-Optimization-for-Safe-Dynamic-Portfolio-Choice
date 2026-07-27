@@ -79,19 +79,25 @@ def run_multi_seed_evaluation(env_type="kim_omberg", num_seeds=30, max_drawdown=
             max_dd_list.append(max_ep_dd)
             violation_flags.append(violated)
             
-            # Standard financial Sharpe ratio using percentage returns R_t = (W_{t+1}-W_t)/W_t
-            w_hist_arr = np.array(info.get('wealth_history', [1.0] + list(np.cumprod(1.0 + np.array(returns)))))
-            if len(w_hist_arr) > 1:
-                pct_rets = (w_hist_arr[1:] - w_hist_arr[:-1]) / (w_hist_arr[:-1] + 1e-8)
+            # Standard financial Sharpe ratio using exact daily wealth returns
+            w_hist_arr = np.array(info['wealth_history'], dtype=np.float64)
+            daily_rets = (w_hist_arr[1:] - w_hist_arr[:-1]) / np.maximum(w_hist_arr[:-1], 1e-8)
+            
+            r_daily = env.r / 252.0
+            excess_daily_rets = daily_rets - r_daily
+            
+            mean_excess = np.mean(excess_daily_rets)
+            std_vol = np.std(daily_rets)
+            
+            if std_vol > 1e-6:
+                sharpe = (mean_excess / std_vol) * np.sqrt(252.0)
             else:
-                pct_rets = np.array(returns)
-                
-            std_pct = np.std(pct_rets) + 1e-8
-            sharpe = np.sqrt(252.0) * (np.mean(pct_rets) - env.r * env.dt) / std_pct
+                sharpe = 0.0
             sharpe_list.append(sharpe)
             
-            annual_ret = (w_final - 1.0)
-            calmar = annual_ret / (max_ep_dd / 100.0 + 1e-6) if max_ep_dd > 0 else annual_ret
+            annual_net_return = (w_final - 1.0) / (horizon / 252.0)
+            max_dd_ratio = max(max_ep_dd, 0.001)
+            calmar = annual_net_return / max_dd_ratio
             calmar_list.append(calmar)
             
         w_arr = np.array(wealth_final_list)
@@ -107,15 +113,8 @@ def run_multi_seed_evaluation(env_type="kim_omberg", num_seeds=30, max_drawdown=
         mean_dd = np.mean(dd_arr)
         violation_rate = np.mean(violation_flags) * 100.0
         
-        # Standard Financial Annualized Sharpe Ratio & Calmar Ratio
-        net_return = mean_w - 1.0
-        
-        # Standard Time-Series Annualized Sharpe Ratio (averaged across seeds)
         mean_sharpe = np.mean(sharpe_list)
-        
-        # Standard Calmar Ratio = Annualized Net Return / (Max Drawdown / 100.0)
-        annualized_net_return = net_return / (horizon / 252.0)
-        mean_calmar = annualized_net_return / (max(mean_dd, 0.1) / 100.0)
+        mean_calmar = np.mean(calmar_list)
         
         results[agent_name] = {
             "mean_wealth": mean_w,

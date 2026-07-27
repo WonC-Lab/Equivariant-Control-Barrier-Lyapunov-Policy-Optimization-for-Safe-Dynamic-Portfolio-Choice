@@ -12,6 +12,10 @@ class SACActor(nn.Module):
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
         self.mu_head = nn.Linear(hidden_dim, action_dim)
         self.log_std_head = nn.Linear(hidden_dim, action_dim)
+        
+        # Initialize actor to take active market risk positions (unconstrained RL baseline)
+        nn.init.normal_(self.mu_head.weight, mean=0.0, std=0.1)
+        nn.init.constant_(self.mu_head.bias, 0.8 / float(action_dim))
 
     def forward(self, obs):
         x = F.relu(self.fc1(obs))

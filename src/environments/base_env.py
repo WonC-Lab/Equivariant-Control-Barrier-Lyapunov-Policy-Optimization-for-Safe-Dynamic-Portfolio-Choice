@@ -40,7 +40,7 @@ class BasePortfolioEnv(gym.Env):
         self.prev_u = np.zeros(num_assets)
         
         self.action_space = spaces.Box(
-            low=-0.5, high=2.0, shape=(num_assets,), dtype=np.float32
+            low=-0.5 / float(num_assets), high=2.0 / float(num_assets), shape=(num_assets,), dtype=np.float32
         )
         
         obs_dim = 3 + self._get_env_state_dim()
@@ -62,6 +62,7 @@ class BasePortfolioEnv(gym.Env):
         self.W_t = self.initial_wealth
         self.H_t = self.initial_wealth
         self.prev_u = np.zeros(self.num_assets)
+        self.wealth_history = [float(self.initial_wealth)]
         
         env_state = self._reset_env_state()
         obs = self._get_obs(env_state)
@@ -69,7 +70,8 @@ class BasePortfolioEnv(gym.Env):
             "wealth": self.W_t,
             "high_water_mark": self.H_t,
             "drawdown": 0.0,
-            "drawdown_violated": False
+            "drawdown_violated": False,
+            "wealth_history": np.array(self.wealth_history, dtype=np.float32)
         }
         return obs, info
 
@@ -99,6 +101,7 @@ class BasePortfolioEnv(gym.Env):
         
         self.H_t = max(self.H_t, self.W_t)
         D_t = 1.0 - (self.W_t / self.H_t)
+        self.wealth_history.append(float(self.W_t))
         
         if self.gamma == 1.0:
             reward = np.log(self.W_t / (self.W_t - dW_t + 1e-12))
@@ -119,7 +122,8 @@ class BasePortfolioEnv(gym.Env):
             "drawdown_violated": drawdown_violation,
             "mu": mu_t,
             "sigma": sigma_t,
-            "r": self.r
+            "r": self.r,
+            "wealth_history": np.array(self.wealth_history, dtype=np.float32)
         }
         
         return obs, reward, terminated, truncated, info

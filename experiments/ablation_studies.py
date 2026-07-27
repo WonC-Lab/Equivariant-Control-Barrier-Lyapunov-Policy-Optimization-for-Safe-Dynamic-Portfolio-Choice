@@ -120,6 +120,64 @@ def run_drawdown_sensitivity_ablation(alpha_list=[0.10, 0.15, 0.20, 0.25], num_s
         
     return sensitivity_results
 
+
+def run_kappa_sensitivity_ablation(kappa_list=[0.0, 0.5, 1.0, 2.0, 5.0], num_seeds=15):
+    print("\n==================================================================")
+    print("  ABLATION STUDY 3: CBF Volatility Margin Parameter (kappa)")
+    print("==================================================================")
+    
+    kappa_results = {}
+    
+    for kappa in kappa_list:
+        env = MultiAssetHestonEnv(num_assets=5, max_drawdown=0.20)
+        agent = ECBLPOAgent(num_assets=5, max_drawdown=0.20)
+        agent.qp_filter.kappa_risk = kappa
+        
+        max_dds, violations, wealths, sharpes = [], [], [], []
+        for seed in range(num_seeds):
+            obs, info = env.reset(seed=3000 + seed)
+            max_dd = 0.0
+            violated = False
+            
+            for t in range(252):
+                _, action, _ = agent.select_action(obs, info, eval_mode=True)
+                obs, reward, terminated, truncated, info = env.step(action)
+                
+                max_dd = max(max_dd, info['drawdown'])
+                if info['drawdown_violated']:
+                    violated = True
+                if terminated or truncated:
+                    break
+                    
+            max_dds.append(max_dd * 100.0)
+            violations.append(violated)
+            wealths.append(info['wealth'])
+            
+            w_hist_arr = np.array(info['wealth_history'], dtype=np.float64)
+            daily_rets = (w_hist_arr[1:] - w_hist_arr[:-1]) / np.maximum(w_hist_arr[:-1], 1e-8)
+            r_daily = env.r / 252.0
+            std_vol = np.std(daily_rets)
+            sharpe = ((np.mean(daily_rets) - r_daily) / max(std_vol, 1e-4)) * np.sqrt(252.0)
+            sharpes.append(sharpe)
+            
+        violation_rate = np.mean(violations) * 100.0
+        mean_max_dd = np.mean(max_dds)
+        mean_wealth = np.mean(wealths)
+        mean_sharpe = np.mean(sharpes)
+        
+        kappa_results[kappa] = {
+            "mean_wealth": mean_wealth,
+            "mean_max_dd": mean_max_dd,
+            "violation_rate": violation_rate,
+            "mean_sharpe": mean_sharpe
+        }
+        
+        print(f"Kappa Volatility Margin: {kappa:4.1f} | Mean Max DD: {mean_max_dd:5.2f}% | Violation Rate: {violation_rate:4.1f}% | Sharpe: {mean_sharpe:5.2f} | Final W_T: {mean_wealth:.4f}")
+        
+    return kappa_results
+
+
 if __name__ == "__main__":
     run_architecture_ablation()
     run_drawdown_sensitivity_ablation()
+    run_kappa_sensitivity_ablation()

@@ -1,6 +1,10 @@
+import os
+import sys
 import unittest
 import numpy as np
 import torch
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.environments.kim_omberg import KimOmbergEnv
 from src.environments.multi_asset_heston import MultiAssetHestonEnv
