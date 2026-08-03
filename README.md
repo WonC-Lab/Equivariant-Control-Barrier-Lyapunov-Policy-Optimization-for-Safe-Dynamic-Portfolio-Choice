@@ -81,8 +81,8 @@ Metrics reported over $M=25$ independent market trajectory seeds ($\alpha = 20.0
 Ensure Python 3.9+ and PyTorch are installed.
 
 ```bash
-git clone https://github.com/WonC-Lab/Equivariant-Control-Barrier-Lyapunov-Policy-Optimization-for-Safe-Dynamic-Portfolio-Choice.git
-cd Equivariant-Control-Barrier-Lyapunov-Policy-Optimization-for-Safe-Dynamic-Portfolio-Choice
+git clone https://github.com/WonC-Lab/E-CBLPO.git
+cd E-CBLPO
 
 # Install dependencies
 pip install torch numpy scipy pandas matplotlib gymnasium
